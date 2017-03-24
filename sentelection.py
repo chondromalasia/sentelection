@@ -3,6 +3,11 @@
 
 import argparse
 
+def get_arguments():
+	"""
+	Gets arguments.
+	"""
+
 def main():
 	print 'foo'
 
