@@ -5,6 +5,7 @@ import argparse
 import os
 import codecs
 import csv
+import nltk.stem
 import sys
 # allows csv to do utf-8 encoding
 reload(sys)
@@ -62,6 +63,41 @@ def join_tweets(tagged_tweets, semeval_tweets):
 
 	return semeval_tweets
 			
+def normalizer(unnormalized_list):
+	"""
+	Uses the nltk wordnet lemmatizer to lemmatize all the nouns, verbs, adjectives and adverbs
+	IF it is lemmatized, it is put in the position after the unlemmatized spot in the
+	token list
+	"""
+	lemmatizer = nltk.stem.WordNetLemmatizer()
+
+	for i, token_list in enumerate(unnormalized_list):
+		for j,thing in enumerate(token_list[5]):
+			if thing[3] == 'V':
+				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1], 'v')
+			elif thing[3] == 'N':
+				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1])
+			elif thing[3] == 'R':
+				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1], 'r')
+			elif thing[3] == 'A':
+				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1], 'a')
+		
+
+	"""
+	for i,thing in enumerate(unnormalized_list[1][5]):
+		print thing
+		if thing[3] == 'V':
+			print lemmatizer.lemmatize(thing[1], 'v')
+		elif thing[3] == 'N':
+			print lemmatizer.lemmatize(thing[1])
+		elif thing[3] == 'R':
+			print lemmatizer.lemmatize(thing[1], 'r')
+		elif thing[3] == 'A':
+			print lemmatizer.lemmatize(thing[1], 'a')
+	"""
+
+	return unnormalized_list
+
 
 def main():
 	# read the untagged tweets
@@ -79,7 +115,9 @@ def main():
 	joined_train = join_tweets(tagged_train_tweets, train_tweets)
 	joined_test = join_tweets(tagged_test_tweets, test_tweets)
 
-	# get n-grams
+	normalized_train = normalizer(joined_train)
+	for i in normalized_train[1][5]:
+		print i
 
 
 if __name__ == "__main__":
