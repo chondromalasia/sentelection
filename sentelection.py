@@ -146,6 +146,89 @@ def ngram_extractor(to_extract):
 
 	return (sorted_unigrams[:n], sorted_bigrams[:n], sorted_trigrams[:n])
 
+def condensed_form(to_condense):
+	"""
+	Returns a form of the token without any duplication
+	"""
+
+	to_condense = to_condense.lower()
+
+	condensed_token = ''
+	last_char = ' '
+
+	for character in to_condense:
+		if character == last_char:
+			pass
+		else:
+			condensed_token = condensed_token + character
+
+		last_char = character
+
+	return condensed_token
+
+def lengthened_validator(tweet_dict):
+	"""
+	If a character is never tripled up, it doesn't really matter
+	"""
+
+
+	for token_form in tweet_dict:
+		count = 0
+		last_char = ' '
+		for character in token_form:
+			if character == last_char:
+				count += 1
+				last_char = character
+				if count > 2:
+					return True
+			else:
+				last_char = character
+				count = 0
+
+	return False
+
+
+def lengthened_words(tweets):
+	"""
+	Returns a dictionary 
+	Each key is a condensed form of a word each value is another dictionary
+	where each 'full word' is a key and its occurence is the value
+
+	Heath - you might want to correct for numbers, punctuation
+	"""
+	condensed_token = ''
+	full_token = ''
+	condensed_dict = {}
+	for tweet in tweets:
+		for token_list in tweet[5]:
+			if token_list[2] == '_':
+				condensed_token = condensed_form(token_list[1])
+				full_token = token_list[1].lower()
+			else:
+				condensed_token = condensed_form(token_list[2])
+				full_token = token_list[2].lower()
+			
+			if condensed_token not in condensed_dict:
+				condensed_dict[condensed_token] = {full_token:1}
+			else:
+				if full_token not in condensed_dict[condensed_token]:
+					condensed_dict[condensed_token][full_token] = 1
+				else:
+					condensed_dict[condensed_token][full_token] += 1
+
+	# check to see if it is actually a valid doubled form
+	legit_dict = {}
+	for thing in condensed_dict:
+		# if there are no triple characters, delete the entry
+		if lengthened_validator(condensed_dict[thing]):
+			legit_dict[thing] = condensed_dict[thing]
+		
+
+	return legit_dict
+
+def character_n_grams(tweet_dict):
+	print "foo"
+			
 def main():
 	# read the untagged tweets
 	semeval_path = "data/semeval_2016_data/StanceDataset/"
@@ -165,8 +248,16 @@ def main():
 	# lemmatizes the tokens
 	normalized_train = normalizer(joined_train)
 
+	# note to change the number of ngrams used, edit the variable n in the
+	# ngram extractor function, right now it's 50
 	feature_ngrams = ngram_extractor(normalized_train)
-	print feature_ngrams
+
+	# create a dictionary of lengthened words
+	lengthened_dict = lengthened_words(joined_train)
+
+	# get character ngrams
+	character_n_grams(joined_train)
+
 
 if __name__ == "__main__":
 	main()
