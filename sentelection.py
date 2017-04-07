@@ -87,9 +87,9 @@ def normalizer(unnormalized_list):
 
 def dict_compare(token, dict_to_increment):
 	if token in dict_to_increment:
-		dict_to_increment[token] += 1
+		dict_to_increment[token][0] += 1
 	else:
-		dict_to_increment[token] = 1
+		dict_to_increment[token] = [1,0]
 	return dict_to_increment
 
 def sort_dict(dict_to_sort):
@@ -110,15 +110,28 @@ def ngram_extractor(to_extract):
 	stopwords = stopwords + [',', '.', '!', '"', '?', ':', "'", '&']
 
 	for i, tweet in enumerate(to_extract):
+		tweet_unigrams = []
 		# check to see if there's a normalized form
 		for i,token_list in enumerate(tweet[5]):
 			if token_list[2] != '_' and token_list[2] not in stopwords:
+				# increment absolute count
 				unigram_dict = dict_compare(token_list[2].lower(), unigram_dict)
+				# this is used to increment the document count
+				tweet_unigrams.append(token_list[2].lower())
+				
 			elif token_list[1] not in stopwords:
 				unigram_dict = dict_compare(token_list[1].lower(), unigram_dict)
+				tweet_unigrams.append(token_list[1].lower())
+
+		# increment number of documents
+		for unigram in set(tweet_unigrams):
+			unigram_dict[unigram][1] += 1
 
 	for i, tweet in enumerate(to_extract):
 		tokens = []
+		bigrams = []
+		trigrams = []
+
 		for token_list in tweet[5]:
 			if token_list[2] != "_":
 				tokens.append(token_list[2].lower())
@@ -127,18 +140,32 @@ def ngram_extractor(to_extract):
 
 		# fill out bigrams dictionary
 		for i in nltk.ngrams(tokens,2):
+			bigrams.append(i)
 			bigram_dict = dict_compare(i, bigram_dict)
 
 		# I'm using _EOT_ to signify the tweet boundaries
 		bigram_dict = dict_compare(("_EOT_", tokens[0]), bigram_dict)
 		bigram_dict = dict_compare((tokens[len(tokens)-1], "_EOT_"), bigram_dict)
 
+		# this increments the document counter
+		for bigram in set(bigrams):
+			bigram_dict[bigram][1] += 1
+		bigram_dict[("_EOT_", tokens[0])][1] += 1
+		bigram_dict[(tokens[len(tokens)-1], "_EOT_")][1] += 1
+
 		# and trigrams
 		for i in nltk.ngrams(tokens, 3):
 			trigram_dict = dict_compare(i, trigram_dict)
+			trigrams.append(i)
 
 		trigram_dict = dict_compare(("_EOT_", tokens[0], tokens[1]), trigram_dict)
 		trigram_dict = dict_compare((tokens[len(tokens)-2], tokens[len(tokens)-1], "_EOT_"), trigram_dict)
+
+
+		for trigram in set(trigrams):
+			trigram_dict[trigram][1] += 1
+		trigram_dict[("_EOT_", tokens[0], tokens[1])][1] += 1
+		trigram_dict[(tokens[len(tokens)-2], tokens[len(tokens)-1], "_EOT_")][1] += 1
 
 	sorted_unigrams = sort_dict(unigram_dict)
 	sorted_bigrams = sort_dict(bigram_dict)
@@ -226,8 +253,51 @@ def lengthened_words(tweets):
 
 	return legit_dict
 
+def n_gram_dict_updater(n_gram, n_gram_dict):
+	"""
+	Updates a dict's count for the given n_gram
+	"""
+	if n_gram in n_gram_dict:
+		n_gram_dict[n_gram][0] += 1
+	else:
+		n_gram_dict[n_gram] = [1,0]
+
+	return n_gram_dict
+
 def character_n_grams(tweet_dict):
-	print "foo"
+	"""
+	This returns a tuple of two dictionaries, character bigrams and trigrams
+	The entry in each dictionary is the character n-gram
+	The value is a list. The first value is the absolute count, the second
+	is the number of documents that it occurs in, so we can compute tf idf
+	"""
+	char_bi_grams = {}
+	char_tri_grams = {}
+
+	for tweet_list in tweet_dict:
+		tweet_bi_grams = []
+		tweet_tri_grams = []
+
+		# update absolute count
+		for bi_gram in [tweet_list[0][i:i+2] for i in range(len(tweet_list[0])-1)]:
+			char_bi_grams = n_gram_dict_updater(bi_gram, char_bi_grams)
+			tweet_bi_grams.append(bi_gram)
+
+		# and increment for number of documents
+		for bi_gram in set(tweet_bi_grams):
+			char_bi_grams[bi_gram][1] += 1
+				
+
+		for tri_gram in [tweet_list[0][i:i+3] for i in range(len(tweet_list[0])-2)]:
+			char_tri_grams = n_gram_dict_updater(tri_gram, char_tri_grams)
+			tweet_tri_grams.append(tri_gram)
+
+		for tri_gram in set(tweet_tri_grams):
+			char_tri_grams[tri_gram][1] += 1
+
+	return (char_bi_grams, char_tri_grams)
+
+	
 			
 def main():
 	# read the untagged tweets
@@ -256,7 +326,7 @@ def main():
 	lengthened_dict = lengthened_words(joined_train)
 
 	# get character ngrams
-	character_n_grams(joined_train)
+	n_gram_dicts = character_n_grams(joined_train)
 
 
 if __name__ == "__main__":
