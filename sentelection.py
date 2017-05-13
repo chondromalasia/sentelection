@@ -9,9 +9,13 @@ import nltk.stem
 import nltk.corpus
 import nltk
 import sys
-# allows csv to do utf-8 encoding
-reload(sys)
-sys.setdefaultencoding('utf-8')
+import unicodecsv as csv
+from sklearn import svm
+import numpy as np
+from sklearn.metrics import confusion_matrix, f1_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 
 def get_arguments():
 	"""
@@ -35,7 +39,7 @@ def read_tagged_senteval(to_read):
 
 	tweet_list = []
 
-	with open(to_read, 'r') as open_file:
+	with codecs.open(to_read, 'r','utf-8') as open_file:
 		tweet = []
 		for i, row in enumerate(open_file):
 			split_row = row.rstrip().split("\t")
@@ -76,13 +80,13 @@ def normalizer(unnormalized_list):
 	for i, token_list in enumerate(unnormalized_list):
 		for j,thing in enumerate(token_list[5]):
 			if thing[3] == 'V':
-				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1], 'v')
+				unnormalized_list[i][5][j][2] = unicode(lemmatizer.lemmatize(thing[1], 'v'))
 			elif thing[3] == 'N':
-				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1])
+				unnormalized_list[i][5][j][2] = unicode(lemmatizer.lemmatize(thing[1]))
 			elif thing[3] == 'R':
-				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1], 'r')
+				unnormalized_list[i][5][j][2] = unicode(lemmatizer.lemmatize(thing[1], 'r'))
 			elif thing[3] == 'A':
-				unnormalized_list[i][5][j][2] = lemmatizer.lemmatize(thing[1], 'a')
+				unnormalized_list[i][5][j][2] = unicode(lemmatizer.lemmatize(thing[1], 'a'))
 	return unnormalized_list
 
 def dict_compare(token, dict_to_increment):
@@ -99,8 +103,9 @@ def ngram_extractor(to_extract):
 	""" This function gets the top n unigrams, bigrams and trigrams
 	right now they're lowercased
 	"""
+	print "Extracting N-grams"
 
-	n = 100
+	n = 500
 
 	unigram_dict = {}
 	bigram_dict = {}
@@ -108,9 +113,13 @@ def ngram_extractor(to_extract):
 
 	stopwords = nltk.corpus.stopwords.words('english')
 	stopwords = stopwords + [',', '.', '!', '"', '?', ':', "'", '&']
+	
+	# convert them to unicode
+	stopwords = [unicode(i) for i in stopwords]
 
 	for i, tweet in enumerate(to_extract):
 		tweet_unigrams = []
+
 		# check to see if there's a normalized form
 		for i,token_list in enumerate(tweet[5]):
 			if token_list[2] != '_' and token_list[2] not in stopwords:
@@ -297,6 +306,95 @@ def character_n_grams(tweet_dict):
 
 	return (char_bi_grams, char_tri_grams)
 
+def feature_maker(tweets, word_ngrams):
+
+	feature_set = []
+
+	# go through tweets one by one
+	for tweet in tweets:
+		features = []
+		
+		# start with unigrams
+		# tuple of all unigrams in a tweet
+		unigrams = []
+		for token in tweet[5]:
+			if token[2] == u'_':
+				unigrams.append(token[1])
+			else:
+				unigrams.append(token[2])
+
+		unigrams = tuple(unigrams)
+
+		# for every feature word, if it's in the unigram list, give it a 1
+		# otherwise a 0
+		for unigram in word_ngrams[0]:
+			if unigram[0] in unigrams:
+				features.append(1)
+			else:
+				features.append(0)
+
+		# now we see if it has an exclamation point
+		has_exclamation = False
+		for unigram in unigrams:
+			if '!' in unigram:
+				has_exclamation = True
+
+		if has_exclamation:
+			features.append(1)
+		else:
+			features.append(0)
+
+		# new if it has a hashtag
+		has_hash = False
+		for unigram in unigrams:
+			if '#' in unigram:
+				has_hash = True
+
+		if has_hash:
+			features.append(1)
+		else:
+			features.append(0)
+
+		# the feature set is a list of lists
+		feature_set.append(features)
+
+	return feature_set
+
+def label_maker(tweets):
+	"""
+	This returns a list of list, right now it's just about whether it is neutral
+	or not
+	"""
+
+	label_set = []
+
+	for tweet in tweets:
+		if tweet[2] == 'NONE':
+			label_set.append(0)
+		else:
+			label_set.append(1)
+	
+	return label_set
+
+def label_balancer(features, labels):
+	"""
+	Here's the deal, the nones are outnumbered by 3-1, so I need to balance it
+	"""
+
+	new_features = []
+	new_labels = []
+
+	for i, label in enumerate(labels):
+		if label == 0:
+			new_features.append(features[i])
+			new_features.append(features[i])
+			new_labels.append(labels[i])
+			new_labels.append(labels[i])
+		else:
+			new_features.append(features[i])
+			new_labels.append(labels[i])
+
+	return (new_features, new_labels)
 	
 			
 def main():
@@ -317,6 +415,7 @@ def main():
 
 	# lemmatizes the tokens
 	normalized_train = normalizer(joined_train)
+	normalized_test = normalizer(joined_test)
 
 	# note to change the number of ngrams used, edit the variable n in the
 	# ngram extractor function, right now it's 50
@@ -327,6 +426,68 @@ def main():
 
 	# get character ngrams
 	n_gram_dicts = character_n_grams(joined_train)
+
+
+	# first we're going to start separating things with sentiment vs things without
+	# start constructing feature set
+	train_features = feature_maker(normalized_train, feature_ngrams)
+	test_features = feature_maker(normalized_test, feature_ngrams)
+
+	# give it labels
+	train_labels = label_maker(normalized_train)
+	test_labels = label_maker(normalized_test)
+
+	balanced = label_balancer(train_features, train_labels)
+	balanced_train_features = balanced[0]
+	balanced_train_labels = balanced[1]
+
+			
+
+
+	clf = svm.SVC()
+	clf.fit(balanced_train_features, balanced_train_labels)
+
+	neut_predictions = clf.predict(test_features)
+	print "SVM"
+	print(confusion_matrix(test_labels, neut_predictions))
+	print f1_score(test_labels, neut_predictions),'\n'
+
+	naive_bayes = GaussianNB()
+	naive_bayes.fit(train_features, train_labels)
+	nb_predictions = naive_bayes.predict(test_features)
+
+	print "NB"
+	print (confusion_matrix(test_labels, nb_predictions))
+	print f1_score(test_labels, nb_predictions), '\n'
+
+	random_forest = RandomForestClassifier()
+	random_forest.fit(train_features, train_labels)
+	rf_predictions = random_forest.predict(test_features)
+
+	print "RF"
+	print (confusion_matrix(test_labels, rf_predictions))
+	print f1_score(test_labels, rf_predictions), '\n'
+
+	logistic_regression = LogisticRegression()
+	logistic_regression.fit(train_features, train_labels)
+	lr_predictions = logistic_regression.predict(test_features)
+	
+	print"LR"
+	print (confusion_matrix(test_labels, lr_predictions))
+	print f1_score(test_labels, lr_predictions), '\n'
+
+	estimators=[('lr', logistic_regression), ('gnb', naive_bayes), ('rf', random_forest)]
+	voting_classifier = VotingClassifier(estimators, voting='hard', weights=[1,1,5])
+	voting_classifier.fit(train_features, train_labels)
+	
+	vc_predictions = voting_classifier.predict(test_features)
+	print "VC"
+	print (confusion_matrix(test_labels, vc_predictions))
+	print f1_score(test_labels, vc_predictions)
+	
+	
+	
+
 
 
 if __name__ == "__main__":
